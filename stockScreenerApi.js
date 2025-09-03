@@ -183,6 +183,11 @@ app.get('/api/screen-stocks', async (req, res) => {
     }
 });
 
+// ✅ Health check route
+app.get('/', (req, res) => {
+    res.send('✅ Stock Screener Backend is running!');
+});
+
 app.listen(PORT, () => {
     console.log(`Stock Screener API server running on http://localhost:${PORT}`);
 });
