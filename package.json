@@ -1,0 +1,14 @@
+{
+  "name": "stock-screener-backend",
+  "version": "1.0.0",
+  "main": "stockScreenerApi.js",
+  "scripts": {
+    "start": "node stockScreenerApi.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.3"
+  }
+}
