@@ -1,5 +1,3 @@
-// NEW VERSION - Updated backend with Top Tier & Emerging screeners
-
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -21,7 +19,6 @@ const polygonClient = axios.create({
 app.use(cors());
 app.use(express.json());
 
-// Simulated example - you'll replace these with Polygon's real endpoints
 const getStockSymbols = async () => {
   try {
     const response = await polygonClient.get('/v3/reference/tickers', {
@@ -40,64 +37,61 @@ const getStockSymbols = async () => {
 };
 
 const getDummyTechnicals = async (symbol) => {
-  // In production, replace with actual Polygon API calls for these indicators
+  // Dummy values for development
   return {
+    symbol,
+    company_name: `${symbol} Inc.`,
     price: 100 + Math.random() * 100,
     ema10: 95,
     ema21: 90,
     sma50: 85,
     sma100: 80,
     sma200: 75,
-    adr: 5 + Math.random() * 3,
+    adr: 5 + Math.random() * 5,
     perf_1m_pct: 30 + Math.random() * 50,
     perf_3m_pct: 60 + Math.random() * 50,
     perf_6m_pct: 100 + Math.random() * 100,
     volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
-    market_cap: 500000000 + Math.floor(Math.random() * 500000000),
+    market_cap: 300000000 + Math.floor(Math.random() * 700000000),
   };
 };
 
 app.get('/api/screen-stocks', async (req, res) => {
   try {
     const symbols = await getStockSymbols();
-    const sampleSymbols = symbols.slice(0, 100);
+    const batch = symbols.slice(0, 100); // sample batch
 
-    const results = await Promise.all(
-      sampleSymbols.map(async symbol => {
-        const data = await getDummyTechnicals(symbol);
-        const {
-          price, ema10, ema21, sma50, sma100, sma200,
-          adr, perf_1m_pct, perf_3m_pct, perf_6m_pct,
-          volume_90d_avg, market_cap,
-        } = data;
+    const results = await Promise.all(batch.map(async symbol => {
+      const data = await getDummyTechnicals(symbol);
+      const {
+        price, ema10, ema21, sma50, sma100, sma200,
+        adr, perf_1m_pct, perf_3m_pct, perf_6m_pct,
+        volume_90d_avg, market_cap
+      } = data;
 
-        // BASIC FILTERS
-        if (price < 1 || market_cap < 300000000 || adr < 5 || volume_90d_avg < 500000) return null;
+      // Filters
+      if (price < 1 || market_cap < 300000000 || adr < 5 || volume_90d_avg < 500000) return null;
+      if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) return null;
 
-        // TREND STRUCTURE
-        const trendOk = price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200;
-        if (!trendOk) return null;
+      // Classification
+      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
+        return { ...data, category: 'top_tier' };
+      } else if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
+        return { ...data, category: 'emerging' };
+      }
 
-        // CATEGORIZATION
-        if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
-          return { symbol, category: 'top_tier', ...data };
-        } else if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
-          return { symbol, category: 'emerging', ...data };
-        }
+      return null;
+    }));
 
-        return null;
-      })
-    );
-
-    const filtered = results.filter(Boolean);
+    const final = results.filter(Boolean);
 
     res.json({
-      top_tier_stocks: filtered.filter(s => s.category === 'top_tier'),
-      emerging_momentum_stocks: filtered.filter(s => s.category === 'emerging')
+      top_tier_stocks: final.filter(s => s.category === 'top_tier'),
+      emerging_momentum_stocks: final.filter(s => s.category === 'emerging')
     });
-  } catch (err) {
-    console.error("Screening error:", err);
-    res.status(500).json({ error: 'Screening failed' });
+  } catch (error) {
+    console.error("Error in /api/screen-stocks:", error.message);
+    res.status(500).json({ error: "Failed to screen stocks" });
   }
 });
 
@@ -106,5 +100,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`✅ Backend server running at http://localhost:${PORT}`);
 });
