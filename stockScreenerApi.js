@@ -26,7 +26,7 @@ const getStockSymbols = async () => {
         market: 'stocks',
         exchange: 'XNYS',
         active: true,
-        limit: 500,
+        limit: 5000,
       },
     });
     return response.data.results.map(t => t.ticker);
@@ -48,7 +48,7 @@ const getDummyTechnicals = async (symbol) => {
     sma200: 75,
     adr: 5 + Math.random() * 5,
     perf_1m_pct: 30 + Math.random() * 50,
-    perf_3m_pct: 55 + Math.random() * 30, // Modified to improve emerging detection
+    perf_3m_pct: 60 + Math.random() * 50,
     perf_6m_pct: 100 + Math.random() * 100,
     volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
     market_cap: 300000000 + Math.floor(Math.random() * 700000000),
@@ -58,7 +58,10 @@ const getDummyTechnicals = async (symbol) => {
 app.get('/api/screen-stocks', async (req, res) => {
   try {
     const symbols = await getStockSymbols();
-    const batch = symbols.slice(0, 100);
+
+    const batch = symbols
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 100); // random 100 stocks
 
     const results = await Promise.all(batch.map(async symbol => {
       const data = await getDummyTechnicals(symbol);
