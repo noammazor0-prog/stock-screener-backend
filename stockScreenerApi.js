@@ -1,5 +1,3 @@
-// stockScreenerApi.js
-
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -53,24 +51,24 @@ const getTechnicalsAndPerformance = async (symbol) => {
         const from6M = to - (180 * 24 * 60 * 60);
 
         const [rsiResponse, candlesResponse] = await Promise.all([
-             finnhubClient.get('/indicator', { params: { symbol, resolution: 'D', indicator: 'rsi', indicator_fields: { timeperiod: 14 } } }),
-             finnhubClient.get('/stock/candle', { params: { symbol, resolution: 'D', from: from6M, to } })
+            finnhubClient.get('/indicator', { params: { symbol, resolution: 'D', indicator: 'rsi', indicator_fields: { timeperiod: 14 } } }),
+            finnhubClient.get('/stock/candle', { params: { symbol, resolution: 'D', from: from6M, to } })
         ]);
 
         const candles = candlesResponse.data;
         if (!candles || !candles.c || candles.c.length < 126) return null;
 
         const calculateSMA = (data, period) => {
-             if (data.length < period) return null;
-             const sum = data.slice(-period).reduce((acc, val) => acc + val, 0);
-             return sum / period;
+            if (data.length < period) return null;
+            const sum = data.slice(-period).reduce((acc, val) => acc + val, 0);
+            return sum / period;
         };
 
         const calculateEMA = (data, period) => {
             if (data.length < period) return null;
             const k = 2 / (period + 1);
             let ema = calculateSMA(data.slice(0, period), period);
-            if(ema === null) return null;
+            if (ema === null) return null;
             for (let i = period; i < data.length; i++) {
                 ema = (data[i] * k) + (ema * (1 - k));
             }
@@ -127,16 +125,13 @@ app.get('/api/screen-stocks', async (req, res) => {
 
             const marketCap = profile.marketCapitalization * 1e6;
             const currentPrice = quote.c;
-            const beta = profile.beta;
 
             if (currentPrice <= 1) return null;
             if (marketCap <= 300 * 1e6) return null;
-            if (!beta || beta < 1.1) return null;
 
             const tech = await getTechnicalsAndPerformance(symbol);
             if (!tech) return null;
 
-            if (tech.rsi >= 70) return null;
             if (tech.adr < 5) return null;
             if (tech.ema10 <= tech.ema21) return null;
             if (currentPrice <= tech.ema10) return null;
@@ -160,7 +155,7 @@ app.get('/api/screen-stocks', async (req, res) => {
                 week_52_high: 0,
                 week_52_low: 0,
                 rsi: tech.rsi,
-                beta,
+                beta: profile.beta,
             };
 
             if (meets1M && meets3M && meets6M) return { ...stockData, category: 'top_tier' };
