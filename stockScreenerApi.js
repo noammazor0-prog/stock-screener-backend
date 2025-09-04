@@ -37,7 +37,6 @@ const getStockSymbols = async () => {
 };
 
 const getDummyTechnicals = async (symbol) => {
-  // Dummy values for development
   return {
     symbol,
     company_name: `${symbol} Inc.`,
@@ -49,7 +48,7 @@ const getDummyTechnicals = async (symbol) => {
     sma200: 75,
     adr: 5 + Math.random() * 5,
     perf_1m_pct: 30 + Math.random() * 50,
-    perf_3m_pct: 60 + Math.random() * 50,
+    perf_3m_pct: 55 + Math.random() * 30, // Modified to improve emerging detection
     perf_6m_pct: 100 + Math.random() * 100,
     volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
     market_cap: 300000000 + Math.floor(Math.random() * 700000000),
@@ -59,7 +58,7 @@ const getDummyTechnicals = async (symbol) => {
 app.get('/api/screen-stocks', async (req, res) => {
   try {
     const symbols = await getStockSymbols();
-    const batch = symbols.slice(0, 100); // sample batch
+    const batch = symbols.slice(0, 100);
 
     const results = await Promise.all(batch.map(async symbol => {
       const data = await getDummyTechnicals(symbol);
@@ -69,11 +68,9 @@ app.get('/api/screen-stocks', async (req, res) => {
         volume_90d_avg, market_cap
       } = data;
 
-      // Filters
       if (price < 1 || market_cap < 300000000 || adr < 5 || volume_90d_avg < 500000) return null;
       if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) return null;
 
-      // Classification
       if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
         return { ...data, category: 'top_tier' };
       } else if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
