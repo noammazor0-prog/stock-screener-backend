@@ -19,21 +19,29 @@ const polygonClient = axios.create({
 app.use(cors());
 app.use(express.json());
 
-const getStockSymbols = async () => {
+const getStockSymbols = async (pages = 3, limitPerPage = 1000) => {
+  const allSymbols = [];
+  let nextUrl = `/v3/reference/tickers?market=stocks&exchange=XNYS&active=true&limit=${limitPerPage}`;
+
   try {
-    const response = await polygonClient.get('/v3/reference/tickers', {
-      params: {
-        market: 'stocks',
-        exchange: 'XNYS',
-        active: true,
-        limit: 5000,
-      },
-    });
-    return response.data.results.map(t => t.ticker);
+    for (let i = 0; i < pages; i++) {
+      const response = await polygonClient.get(nextUrl);
+      const { results, next_url } = response.data;
+
+      if (results) {
+        allSymbols.push(...results.map(t => t.ticker));
+      }
+
+      if (!next_url) break;
+
+      const nextUrlPath = new URL(next_url).pathname + new URL(next_url).search;
+      nextUrl = nextUrlPath;
+    }
   } catch (error) {
     console.error("Error fetching stock symbols:", error.message);
-    return [];
   }
+
+  return allSymbols;
 };
 
 const getDummyTechnicals = async (symbol) => {
@@ -61,7 +69,7 @@ app.get('/api/screen-stocks', async (req, res) => {
 
     const batch = symbols
       .sort(() => 0.5 - Math.random())
-      .slice(0, 100); // random 100 stocks
+      .slice(0, 100);
 
     const results = await Promise.all(batch.map(async symbol => {
       const data = await getDummyTechnicals(symbol);
