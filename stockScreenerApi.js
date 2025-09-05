@@ -5,10 +5,9 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
 if (!POLYGON_API_KEY) {
-  console.error("FATAL ERROR: POLYGON_API_KEY environment variable not set.");
+  console.error("FATAL ERROR: POLYGON_API_KEY missing.");
 }
 
 const polygonClient = axios.create({
@@ -19,94 +18,79 @@ const polygonClient = axios.create({
 app.use(cors());
 app.use(express.json());
 
-const getStockSymbols = async (pages = 3, limitPerPage = 1000) => {
+const getStockSymbols = async (maxPages = 3, limit = 200) => {
   const allSymbols = [];
-  let nextUrl = `/v3/reference/tickers?market=stocks&exchange=XNYS&active=true&limit=${limitPerPage}`;
+  let url = `/v3/reference/tickers?market=stocks&active=true&limit=${limit}`;
 
-  try {
-    for (let i = 0; i < pages; i++) {
-      const response = await polygonClient.get(nextUrl);
-      const { results, next_url } = response.data;
-
-      if (results) {
-        allSymbols.push(...results.map(t => t.ticker));
-      }
-
-      if (!next_url) break;
-
-      const nextUrlPath = new URL(next_url).pathname + new URL(next_url).search;
-      nextUrl = nextUrlPath;
+  for (let i = 0; i < maxPages; i++) {
+    try {
+      const res = await polygonClient.get(url);
+      const data = res.data;
+      if (data.results) allSymbols.push(...data.results.map(t => t.ticker));
+      if (!data.next_url) break;
+      // Clean pagination URL
+      url = data.next_url.replace('://api.polygon.io:443:443', '://api.polygon.io') +
+            (data.next_url.includes('?') ? `&apiKey=${POLYGON_API_KEY}` : `?apiKey=${POLYGON_API_KEY}`);
+    } catch (err) {
+      console.error(`Pagination error on page ${i + 1}:`, err.message);
+      break;
     }
-  } catch (error) {
-    console.error("Error fetching stock symbols:", error.message);
   }
-
   return allSymbols;
 };
 
-const getDummyTechnicals = async (symbol) => {
-  return {
-    symbol,
-    company_name: `${symbol} Inc.`,
-    price: 100 + Math.random() * 100,
-    ema10: 95,
-    ema21: 90,
-    sma50: 85,
-    sma100: 80,
-    sma200: 75,
-    adr: 5 + Math.random() * 5,
-    perf_1m_pct: 30 + Math.random() * 50,
-    perf_3m_pct: 60 + Math.random() * 50,
-    perf_6m_pct: 100 + Math.random() * 100,
-    volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
-    market_cap: 300000000 + Math.floor(Math.random() * 700000000),
-  };
-};
+const getDummyTechnicals = async (symbol) => ({
+  symbol,
+  company_name: `${symbol}`,
+  price: 100 + Math.random() * 100,
+  ema10: 95,
+  ema21: 90,
+  sma50: 85,
+  sma100: 80,
+  sma200: 75,
+  adr: 5 + Math.random() * 5,
+  perf_1m_pct: 30 + Math.random() * 50,
+  perf_3m_pct: 60 + Math.random() * 50,
+  perf_6m_pct: 100 + Math.random() * 100,
+  volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
+  market_cap: 300000000 + Math.floor(Math.random() * 700000000),
+});
 
 app.get('/api/screen-stocks', async (req, res) => {
-  try {
-    const symbols = await getStockSymbols();
+  const symbols = await getStockSymbols();
+  const batch = symbols.sort(() => 0.5 - Math.random()).slice(0, 150);
 
-    const batch = symbols
-      .sort(() => 0.5 - Math.random())
-      .slice(0, 100);
+  const results = await Promise.all(batch.map(async symbol => {
+    const d = await getDummyTechnicals(symbol);
+    const { price, ema10, ema21, sma50, sma100, sma200, adr, perf_1m_pct, perf_3m_pct, perf_6m_pct, volume_90d_avg, market_cap } = d;
 
-    const results = await Promise.all(batch.map(async symbol => {
-      const data = await getDummyTechnicals(symbol);
-      const {
-        price, ema10, ema21, sma50, sma100, sma200,
-        adr, perf_1m_pct, perf_3m_pct, perf_6m_pct,
-        volume_90d_avg, market_cap
-      } = data;
-
-      if (price < 1 || market_cap < 300000000 || adr < 5 || volume_90d_avg < 500000) return null;
-      if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) return null;
-
-      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
-        return { ...data, category: 'top_tier' };
-      } else if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
-        return { ...data, category: 'emerging' };
-      }
-
+    if (price < 1 || market_cap < 300e6 || adr < 5 || volume_90d_avg < 500000) {
+      console.log(`Filtered early: ${symbol}`);
       return null;
-    }));
+    }
+    if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) {
+      console.log(`Trend mismatch: ${symbol}`);
+      return null;
+    }
 
-    const final = results.filter(Boolean);
+    if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
+      return { ...d, category: 'top_tier' };
+    }
+    if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
+      console.log(`EMERGING: ${symbol} — 1M=${perf_1m_pct.toFixed(1)}%, 3M=${perf_3m_pct.toFixed(1)}%`);
+      return { ...d, category: 'emerging' };
+    }
+    console.log(`Failed emerging: ${symbol} 1M=${perf_1m_pct.toFixed(1)}, 3M=${perf_3m_pct.toFixed(1)}`);
+    return null;
+  }));
 
-    res.json({
-      top_tier_stocks: final.filter(s => s.category === 'top_tier'),
-      emerging_momentum_stocks: final.filter(s => s.category === 'emerging')
-    });
-  } catch (error) {
-    console.error("Error in /api/screen-stocks:", error.message);
-    res.status(500).json({ error: "Failed to screen stocks" });
-  }
+  const filtered = results.filter(Boolean);
+  res.json({
+    top_tier_stocks: filtered.filter(s => s.category === 'top_tier'),
+    emerging_momentum_stocks: filtered.filter(s => s.category === 'emerging'),
+  });
 });
 
-app.get('/', (req, res) => {
-  res.send('✅ Polygon Stock Screener Backend is running!');
-});
+app.get('/', (req, res) => res.send('✅ Polygon Stock Screener Backend Running.'));
+app.listen(PORT, () => console.log(`Server on http://localhost:${PORT}`));
 
-app.listen(PORT, () => {
-  console.log(`✅ Backend server running at http://localhost:${PORT}`);
-});
