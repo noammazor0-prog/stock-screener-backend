@@ -66,18 +66,27 @@ app.get('/api/screen-stocks', async (req, res) => {
 
     const results = await Promise.all(batch.map(async symbol => {
       const d = await getDummyTechnicals(symbol);
-      const { price, ema10, ema21, sma50, sma100, sma200, adr, perf_1m_pct, perf_3m_pct, perf_6m_pct, volume_90d_avg, market_cap } = d;
+      const {
+        price, ema10, ema21, sma50, sma100, sma200,
+        adr, perf_1m_pct, perf_3m_pct, perf_6m_pct,
+        volume_90d_avg, market_cap
+      } = d;
 
       if (price < 1 || market_cap < 300e6 || adr < 5 || volume_90d_avg < 500000) return null;
       if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) return null;
 
-  if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct < 100) {
-  console.log(`FOUND EMERGING: ${symbol} — 1M ${perf_1m_pct.toFixed(1)}%, 3M ${perf_3m_pct.toFixed(1)}%`);
-  return { ...d, category: 'emerging' };
-} else {
-  console.log(`NOT EMERGING: ${symbol} — 1M ${perf_1m_pct.toFixed(1)}%, 3M ${perf_3m_pct.toFixed(1)}%`);
-  return null;
-}
+      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
+        return { ...d, category: 'top_tier' };
+      }
+
+      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct < 100) {
+        console.log(`FOUND EMERGING: ${symbol} — 1M ${perf_1m_pct.toFixed(1)}%, 3M ${perf_3m_pct.toFixed(1)}%`);
+        return { ...d, category: 'emerging' };
+      } else {
+        console.log(`NOT EMERGING: ${symbol} — 1M ${perf_1m_pct.toFixed(1)}%, 3M ${perf_3m_pct.toFixed(1)}%`);
+        return null;
+      }
+    })); // ✅ Fixed: Closed map function
 
     const filtered = results.filter(Boolean);
     res.json({
