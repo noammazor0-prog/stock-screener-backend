@@ -18,24 +18,29 @@ const polygonClient = axios.create({
 app.use(cors());
 app.use(express.json());
 
-const getStockSymbols = async (maxPages = 3, limit = 200) => {
+const getStockSymbols = async (maxPages = 3, limit = 500) => {
   const allSymbols = [];
   let url = `/v3/reference/tickers?market=stocks&active=true&limit=${limit}`;
 
   for (let i = 0; i < maxPages; i++) {
-    try {
-      const res = await polygonClient.get(url);
-      const data = res.data;
-      if (data.results) allSymbols.push(...data.results.map(t => t.ticker));
-      if (!data.next_url) break;
-      url = data.next_url.replace('https://api.polygon.io', '');
-    } catch (err) {
-      console.error(`Pagination error on page ${i + 1}:`, err.message);
-      break;
+    const res = await polygonClient.get(url);
+    const data = res.data;
+    if (data.results) {
+      allSymbols.push(...data.results.map(r => r.ticker));
     }
+    if (!data.next_url) break;
+
+    // Clean malformed next_url
+    const cleanUrl = data.next_url
+      .replace('://api.polygon.io:443:443', '://api.polygon.io')
+      + `&apiKey=${POLYGON_API_KEY}`;
+
+    // Convert to relative URL path
+    url = cleanUrl.replace('https://api.polygon.io', '');
   }
   return allSymbols;
 };
+
 
 const getDummyTechnicals = async (symbol) => ({
   symbol,
@@ -66,13 +71,13 @@ app.get('/api/screen-stocks', async (req, res) => {
       if (price < 1 || market_cap < 300e6 || adr < 5 || volume_90d_avg < 500000) return null;
       if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) return null;
 
-      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
-        return { ...d, category: 'top_tier' };
-      } else if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct < 100) {
-        return { ...d, category: 'emerging' };
-      }
-      return null;
-    }));
+  if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct < 100) {
+  console.log(`FOUND EMERGING: ${symbol} — 1M ${perf_1m_pct.toFixed(1)}%, 3M ${perf_3m_pct.toFixed(1)}%`);
+  return { ...d, category: 'emerging' };
+} else {
+  console.log(`NOT EMERGING: ${symbol} — 1M ${perf_1m_pct.toFixed(1)}%, 3M ${perf_3m_pct.toFixed(1)}%`);
+  return null;
+}
 
     const filtered = results.filter(Boolean);
     res.json({
