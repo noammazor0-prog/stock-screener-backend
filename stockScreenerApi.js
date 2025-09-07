@@ -30,22 +30,27 @@ app.get('/api/screen-stocks', async (req, res) => {
     const snapshots = await getSnapshotData();
 
     const results = snapshots.map(d => {
-      const { ticker: symbol, day: bar = {}, lastQuote = {} } = d;
-      const price = lastQuote.askprice || bar.c;
+      const { ticker: symbol, day: bar = {}, lastTrade = {} } = d;
+      const price = lastTrade.p || bar.c;
+      if (!bar.o || !bar.c) return null; // skip if missing data
+
+      const perf1m = ((bar.c - bar.o) / bar.o) * 100;
+      // These are placeholders—swap in real 3M/6M logic when available
+      const perf3m = perf1m;
+      const perf6m = perf1m;
       const volume = bar.v || 0;
-      const perf_1m_pct = bar.c ? ((bar.c - bar.o) / bar.o) * 100 : 0;
-      const perf_3m_pct = perf_1m_pct; // Placeholder logic
-      const perf_6m_pct = perf_1m_pct; // Placeholder logic
-      const market_cap = d. market_cap || 0; // Assuming snapshot includes this
+      const marketCap = d.market_cap || 0;
 
-      if (!price || market_cap < 300e6 || volume < 500000) return null;
+      if (price < 1 || marketCap < 300e6 || volume < 500000) return null;
 
-      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
-        return { symbol, price, volume, perf_1m_pct, perf_3m_pct, perf_6m_pct, category: 'top_tier' };
+      if (perf1m >= 30 && perf3m >= 60 && perf6m >= 100) {
+        return { symbol, price, perf1m, perf3m, perf6m, category: 'top_tier' };
       }
-      if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
-        return { symbol, price, volume, perf_1m_pct, perf_3m_pct, perf_6m_pct, category: 'emerging' };
+
+      if (perf1m >= 30 && perf3m >= 60 && perf6m < 100) {
+        return { symbol, price, perf1m, perf3m, perf6m, category: 'emerging' };
       }
+
       return null;
     }).filter(Boolean);
 
