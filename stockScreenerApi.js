@@ -6,8 +6,10 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
+
 if (!POLYGON_API_KEY) {
-  console.error("FATAL ERROR: POLYGON_API_KEY missing.");
+  console.error("❌ POLYGON_API_KEY missing in .env file");
+  process.exit(1);
 }
 
 const polygonClient = axios.create({
@@ -18,7 +20,8 @@ const polygonClient = axios.create({
 app.use(cors());
 app.use(express.json());
 
-const getStockSymbols = async (maxPages = 3, limit = 500) => {
+// Fetch multiple pages of stock tickers
+const getStockSymbols = async (maxPages = 3, limit = 200) => {
   const allSymbols = [];
   let url = `/v3/reference/tickers?market=stocks&active=true&limit=${limit}`;
 
@@ -29,16 +32,12 @@ const getStockSymbols = async (maxPages = 3, limit = 500) => {
       allSymbols.push(...data.results.map(r => r.ticker));
     }
     if (!data.next_url) break;
-
-    const cleanUrl = data.next_url
-      .replace('://api.polygon.io:443:443', '://api.polygon.io')
-      + `&apiKey=${POLYGON_API_KEY}`;
-
-    url = cleanUrl.replace('https://api.polygon.io', '');
+    url = data.next_url.replace('https://api.polygon.io', '') + `&apiKey=${POLYGON_API_KEY}`;
   }
   return allSymbols;
 };
 
+// Simulated market data generator
 const getDummyTechnicals = async (symbol) => ({
   symbol,
   company_name: `${symbol} Inc.`,
@@ -51,7 +50,7 @@ const getDummyTechnicals = async (symbol) => ({
   adr: 5 + Math.random() * 5,
   perf_1m_pct: 30 + Math.random() * 50,
   perf_3m_pct: 60 + Math.random() * 50,
-  perf_6m_pct: 50 + Math.random() * 150,
+  perf_6m_pct: 90 + Math.random() * 80,
   volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
   market_cap: 300000000 + Math.floor(Math.random() * 700000000),
 });
@@ -71,6 +70,7 @@ app.get('/api/screen-stocks', async (req, res) => {
       if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
         return { ...d, category: 'top_tier' };
       }
+
       if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct < 100) {
         return { ...d, category: 'emerging' };
       }
@@ -83,11 +83,12 @@ app.get('/api/screen-stocks', async (req, res) => {
       top_tier_stocks: filtered.filter(s => s.category === 'top_tier'),
       emerging_momentum_stocks: filtered.filter(s => s.category === 'emerging'),
     });
+
   } catch (err) {
-    console.error("Error screening stocks:", err);
+    console.error("Error screening stocks:", err.message);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-app.get('/', (req, res) => res.send('✅ Polygon Stock Screener Backend Running.'));
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.get('/', (req, res) => res.send('✅ Polygon Stock Screener Backend Running'));
+app.listen(PORT, () => console.log(`🚀 Server listening at http://localhost:${PORT}`));
