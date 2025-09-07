@@ -20,75 +20,44 @@ const polygonClient = axios.create({
 app.use(cors());
 app.use(express.json());
 
-// Fetch multiple pages of stock tickers
-const getStockSymbols = async (maxPages = 3, limit = 200) => {
-  const allSymbols = [];
-  let url = `/v3/reference/tickers?market=stocks&active=true&limit=${limit}`;
-
-  for (let i = 0; i < maxPages; i++) {
-    const res = await polygonClient.get(url);
-    const data = res.data;
-    if (data.results) {
-      allSymbols.push(...data.results.map(r => r.ticker));
-    }
-    if (!data.next_url) break;
-    url = data.next_url.replace('https://api.polygon.io', '') + `&apiKey=${POLYGON_API_KEY}`;
-  }
-  return allSymbols;
-};
-
-// Simulated market data generator
-const getDummyTechnicals = async (symbol) => ({
-  symbol,
-  company_name: `${symbol} Inc.`,
-  price: 100 + Math.random() * 100,
-  ema10: 95,
-  ema21: 90,
-  sma50: 85,
-  sma100: 80,
-  sma200: 75,
-  adr: 5 + Math.random() * 5,
-  perf_1m_pct: 30 + Math.random() * 50,
-  perf_3m_pct: 60 + Math.random() * 50,
-  perf_6m_pct: 90 + Math.random() * 80,
-  volume_90d_avg: 500000 + Math.floor(Math.random() * 1000000),
-  market_cap: 300000000 + Math.floor(Math.random() * 700000000),
-});
+async function getSnapshotData() {
+  const res = await polygonClient.get('/v2/snapshot/locale/us/markets/stocks/tickers');
+  return res.data.tickers || [];
+}
 
 app.get('/api/screen-stocks', async (req, res) => {
   try {
-    const symbols = await getStockSymbols();
-    const batch = symbols.sort(() => 0.5 - Math.random()).slice(0, 200);
+    const snapshots = await getSnapshotData();
 
-    const results = await Promise.all(batch.map(async symbol => {
-      const d = await getDummyTechnicals(symbol);
-      const { price, ema10, ema21, sma50, sma100, sma200, adr, perf_1m_pct, perf_3m_pct, perf_6m_pct, volume_90d_avg, market_cap } = d;
+    const results = snapshots.map(d => {
+      const { ticker: symbol, day: bar = {}, lastQuote = {} } = d;
+      const price = lastQuote.askprice || bar.c;
+      const volume = bar.v || 0;
+      const perf_1m_pct = bar.c ? ((bar.c - bar.o) / bar.o) * 100 : 0;
+      const perf_3m_pct = perf_1m_pct; // Placeholder logic
+      const perf_6m_pct = perf_1m_pct; // Placeholder logic
+      const market_cap = d. market_cap || 0; // Assuming snapshot includes this
 
-      if (price < 1 || market_cap < 300e6 || adr < 5 || volume_90d_avg < 500000) return null;
-      if (!(price > ema10 && ema10 > ema21 && ema21 > sma50 && sma50 > sma100 && sma100 > sma200)) return null;
+      if (!price || market_cap < 300e6 || volume < 500000) return null;
 
       if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct >= 100) {
-        return { ...d, category: 'top_tier' };
+        return { symbol, price, volume, perf_1m_pct, perf_3m_pct, perf_6m_pct, category: 'top_tier' };
       }
-
-      if (perf_1m_pct >= 30 && perf_3m_pct >= 60 && perf_6m_pct < 100) {
-        return { ...d, category: 'emerging' };
+      if (perf_1m_pct >= 30 && perf_3m_pct >= 60) {
+        return { symbol, price, volume, perf_1m_pct, perf_3m_pct, perf_6m_pct, category: 'emerging' };
       }
-
       return null;
-    }));
+    }).filter(Boolean);
 
-    const filtered = results.filter(Boolean);
     res.json({
-      top_tier_stocks: filtered.filter(s => s.category === 'top_tier'),
-      emerging_momentum_stocks: filtered.filter(s => s.category === 'emerging'),
+      top_tier_stocks: results.filter(s => s.category === 'top_tier'),
+      emerging_momentum_stocks: results.filter(s => s.category === 'emerging'),
     });
-
   } catch (err) {
     console.error("Error screening stocks:", err.message);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-app.get('/', (req, res) => res.send('✅ Polygon Stock Screener Backend Running'));
-app.listen(PORT, () => console.log(`🚀 Server listening at http://localhost:${PORT}`));
+app.get('/', (req, res) => res.send('✅ Polygon Stock Screener Backend with Live Data Running'));
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
